@@ -53,13 +53,13 @@ def _download_spy_prices(cfg: Dict[str, Any]) -> pd.DataFrame:
 
     spy = yf.download(ticker, start=start_date, end=end_date, group_by=None, auto_adjust=False)
 
-    if df.empty:
+    if spy.empty:
         raise RuntimeError("[loaders] No data returned from yfinance.")
-    df = _flatten_columns(df)
-    df = df.sort_index()
-    return df
+    spy = _flatten_columns(spy)
+    spy = spy.sort_index()
+    return spy
 
-def load_or_update_spy_prices(cfg: Dict[str, Any]) -> pd.DataFrame:
+def load_or_update_spy_prices(cfg: Dict[str, Any], allow_data_update: bool) -> pd.DataFrame:
     """
     Main entry point for SPY prices.
 
@@ -72,7 +72,7 @@ def load_or_update_spy_prices(cfg: Dict[str, Any]) -> pd.DataFrame:
       - If file exists:
           * load CSV
           * find last available date
-          * download new data from last_date+1 to end_date (from config, or today)
+          * download new data from last_date+1 to end_date when allowed (from config, or today)
           * append new rows, remove duplicates
           * save back to CSV
           * return updated DataFrame
@@ -94,6 +94,9 @@ def load_or_update_spy_prices(cfg: Dict[str, Any]) -> pd.DataFrame:
 
     last_date = spy_old.index.max()
     print(f"[load_or_update_spy] Last date in file: {last_date.date()}")
+
+    if not allow_data_update:
+        return spy_old
 
     # Determine end date
     end_date = cfg["data"]["end_date"]

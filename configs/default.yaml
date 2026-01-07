@@ -1,0 +1,6 @@
+data:
+  root_dir: "data"             # relative to repo root
+  spy_prices_file: "data/spy/spy_prices.csv"
+  spy_ticker: "SPY"
+  start_date: "2010-01-01"
+  end_date: null               # null = use today's date when running
