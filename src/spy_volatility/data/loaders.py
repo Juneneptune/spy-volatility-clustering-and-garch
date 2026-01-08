@@ -18,6 +18,16 @@ def _flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
         for col in df.columns] # Flatten multi-index: join levels with underscore
     return df
 
+def _filter_columns_by_suffix(df: pd.DataFrame, suffix: str) -> pd.DataFrame:
+    """
+    Extracts column values by key letters.
+    """
+    mask = df.columns.str.contains(suffix + "$")
+    assert mask.any(), "No suffix columns found — check auto_adjust or data source"
+
+    df = df.loc[:, mask]
+    return df
+
 def _resolve_spy_prices_path(cfg: Dict[str, Any]) -> Path:
     """
     Use the config to compute the full path to the SPY prices CSV.
@@ -28,6 +38,20 @@ def _resolve_spy_prices_path(cfg: Dict[str, Any]) -> Path:
     """
     project_root = get_project_root()
     rel_path = cfg["data"]["spy_prices_file"]
+    full_path = project_root / rel_path
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    return full_path
+
+def _resolve_prices_path(cfg: Dict[str, Any]) -> Path:
+    """
+    Use the config to compute the full path to the SPY prices CSV.
+
+    If cfg["data"]["spy_prices_file"] == "data/spy/spy_prices.csv"
+    and project_root is spy-volatility-clustering-and-garch,
+    the full path is spy-volatility-clustering-and-garch/data/spy/spy_prices.csv
+    """
+    project_root = get_project_root()
+    rel_path = cfg["data"]["prices_file"]
     full_path = project_root / rel_path
     full_path.parent.mkdir(parents=True, exist_ok=True)
     return full_path
@@ -69,7 +93,7 @@ def load_or_update_spy_prices(cfg: Dict[str, Any], allow_data_update: bool) -> p
           * download full history (start_date -> end_date)
           * save to CSV
           * return DataFrame
-      - If file exists:
+      - If file exists and data update is allowed:
           * load CSV
           * find last available date
           * download new data from last_date+1 to end_date when allowed (from config, or today)
@@ -127,3 +151,111 @@ def load_or_update_spy_prices(cfg: Dict[str, Any], allow_data_update: bool) -> p
     spy.to_csv(spy_csv_path)
     print(f"[load_or_update_spy] Updated data saved to {spy_csv_path}")
     return spy
+
+
+def _download_multivariate_prices(cfg: Dict[str, Any], download_adj_close_only=False) -> pd.DataFrame:
+    """
+    Download SPY data from Yahoo Finance based on start_date and end_date in config.
+
+    Config entries used:
+      cfg["data"]["ticker"]
+      cfg["data"]["start_date"]
+      cfg["data"]["end_date"]  (if null, we use today's date)
+    Returns a DataFrame indexed by date with flattened column names.
+    """
+    tickers = cfg["data"]["ticker"]
+    start_date = cfg["data"]["start_date"]
+    end_date = cfg["data"]["end_date"]
+
+    if end_date is None:
+        end_date = dt.date.today().isoformat()
+
+    print(f"[loaders] Downloading {tickers} from {start_date} to {end_date} ...")
+
+    prices = yf.download(tickers, start=start_date, end=end_date, group_by=None, auto_adjust=False)
+    if download_adj_close_only:
+        prices = prices.loc[:, prices.columns.get_level_values(1) == "Adj Close"]
+
+    if prices.empty:
+        raise RuntimeError("[loaders] No data returned from yfinance.")
+    prices = _flatten_columns(prices)
+    prices = prices.sort_index()
+    return prices
+
+
+def load_or_update_prices(cfg: Dict[str, Any], allow_data_update: bool, show_only_adj_close=False) -> pd.DataFrame:
+    """
+    Main entry point for multiple prices.
+
+    Behavior:
+      - Compute CSV path from config
+      - If file does not exist:
+          * download full history (start_date -> end_date)
+          * save to CSV
+          * return DataFrame
+      - If file exists and data update is allowed:
+          * load CSV
+          * find last available date
+          * If data update is allowed:
+          * append new rows, remove duplicates
+          * save back to CSV
+          * return updated DataFrame
+    """
+    csv_path = _resolve_prices_path(cfg)
+
+    if not csv_path.exists():
+        # No file yet: full download
+        print(f"[load_or_update_prices] {csv_path} not found. Downloading full history.")
+        prices = _download_multivariate_prices(cfg, show_only_adj_close)
+        prices.to_csv(csv_path)
+        print(f"[load_or_update_prices] Saved to {csv_path}")
+        return prices
+
+    # File exists: load and update
+    print(f"[load_or_update_prices] Loading existing prices data from {csv_path}")
+    prices_old = pd.read_csv(csv_path, parse_dates=[0], index_col=0)
+    prices_old = prices_old.sort_index()
+
+    last_date = prices_old.index.max()
+    print(f"[load_or_update_prices] Last date in file: {last_date.date()}")
+
+    if not allow_data_update:
+        if show_only_adj_close:
+            prices_old = _filter_columns_by_suffix(prices_old, suffix="_Adj_Close")
+            print(f"[load_or_update_prices] Only displaying adjusted close")
+        return prices_old
+
+    # Determine end date
+    end_date = cfg["data"]["end_date"]
+    if end_date is None:
+        end_date = dt.date.today().isoformat()
+
+    # Compute next start date = last_date + 1 day
+    next_start = (last_date + pd.Timedelta(days=1)).date().isoformat()
+    print(f"[load_or_update_spy] Downloading updates from {next_start} to {end_date} ...")
+
+    # Temporary config for update range
+    cfg_update = cfg.copy()
+    cfg_update["data"] = cfg["data"].copy()
+    cfg_update["data"]["start_date"] = next_start
+    cfg_update["data"]["end_date"] = end_date
+
+    prices_new = _download_multivariate_prices(cfg_update, show_only_adj_close)
+
+    if prices_new.empty:
+        print("[load_or_update_spy] No new rows. Returning existing data.")
+        return prices_old
+
+    # Append and drop duplicates
+    prices = pd.concat([prices_old, prices_new])
+    prices = prices[~prices.index.duplicated(keep="last")]
+    prices = prices.sort_index()
+
+
+    prices.to_csv(csv_path)
+    print(f"[load_or_update_prices] Updated data saved to {csv_path}")
+
+    if show_only_adj_close:
+        prices = _filter_columns_by_suffix(prices, suffix="_Adj_Close")
+        print(f"[load_or_update_prices] Only displaying adjusted close")
+    return prices

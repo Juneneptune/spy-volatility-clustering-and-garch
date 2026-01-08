@@ -1,92 +1,118 @@
-# SPY Volatility Clustering and GARCH
+# Volatility and Covariance Baseline Lab (SPY + Liquid ETFs)
 
-A Python project for analyzing volatility clustering in SPY (S&P 500 ETF) data and implementing GARCH models for volatility forecasting.
+The goal of this project is to build baseline volatility and covariance plumbing in a clean, reproducible way using Python scripts (no notebooks).
 
-## Project Structure
+This project's goal is not about modeling complexity or "alpha claims." Instead, I'm trying to work through:
+- basic definitions (returns, realized volatility, sample covariance),
+- comparisons (forecast vs realized proxy),
+- numerical diagnostics (covariance fragility),
+- project structure (scripts, configs, deterministic outputs).
+
+**Focus:** volatility and covariance as risk objects.  
+**Not included:** option pricing, Ito calculus, complex deep forecasting, or research-only abstractions.
+
+---
+
+## What this project includes
+
+The project currently includes:
+- Baseline volatility models compared to realized proxies
+- Covariance treated as a potentially fragile risk object
+- Conditioning diagnostics via eigenvalues and condition number
+- Scripts with configs (not notebooks)
+- Reproducible artifacts (figures saved to disk, deterministic paths)
+
+---
+
+## Repo structure
 
 ```
 spy-volatility-clustering-and-garch/
 ├── configs/                    # Configuration files
-│   └── default.yaml           # Default configuration for data loading and model parameters
+│   ├── default.yaml           # single-asset (SPY)
+│   └── default_multivar.yaml  # multivariate prices for covariance diagnostics
 │
-├── data/                       # Data storage directory (created at runtime)
+├── data/                       # generated artifacts live here
 │   ├── spy/                   # SPY price data storage
-│   │   └── spy_prices.csv     # Downloaded SPY historical prices (auto-generated)
-│   └── outputs/               # Generated outputs
+│   │   └── spy_prices.csv     # cached SPY prices
+│   └── outputs/
 │       └── figures/           # Visualization outputs
 │           ├── SPY_log_returns.png
 │           ├── SPY_realized_volatility.png
-│           └── SPY_GARCH11_VS_RV21.png
+│           ├── SPY_GARCH11_VS_RV21.png
+│           └── day3_covariance_fragility.png
 │
 ├── datasets/                   # Additional datasets (if any)
 │
 ├── notebooks/                  # Jupyter notebooks for analysis
 │   └── volatility_basics.ipynb
 │
-├── scripts/                    # Utility scripts
-│   ├── test_load_spy.py       # Script to test SPY data loading
-│   ├── print_config.py        # Print configuration settings
-│   ├── compute_returns_and_rv.py  # Compute returns and realized volatility
-│   └── fit_garch.py           # Fit GARCH(1,1) model and compare with RV
+├── scripts/                    # entrypoints (what gets run)
+│   ├── test_load_spy.py
+│   ├── print_config.py
+│   ├── compute_returns_and_rv.py
+│   ├── fit_garch.py
+│   └── diagnose_covariance.py
 │
 ├── src/                        # Source code
 │   └── spy_volatility/        # Main package
 │       ├── __init__.py
 │       ├── data/              # Data loading and processing modules
 │       │   ├── __init__.py
-│       │   ├── loaders.py    # SPY data download and loading utilities
-│       │   └── features.py   # Feature engineering (returns, realized volatility)
+│       │   ├── loaders.py    # Yahoo Finance download + caching (single/multi-asset)
+│       │   └── features.py   # returns + realized volatility
 │       ├── models/            # GARCH and volatility models
 │       │   ├── __init__.py
-│       │   └── garch_models.py  # GARCH model implementations
+│       │   └── garch_models.py  # GARCH baselines (currently GARCH(1,1))
+│       ├── risk/              # Risk metrics and portfolio analysis
+│       │   ├── __init__.py
+│       │   └── cov_metrics.py   # rolling sample covariance + diagnostics
 │       ├── training/          # Model training utilities
 │       │   └── __init__.py
 │       └── utils/             # Utility functions
 │           ├── __init__.py
-│           └── config.py     # Configuration loading utilities
+│           └── config.py     # config loading + project root
 │
-├── requirements.txt           # Python dependencies
-├── setup.py                   # Package setup configuration
-└── README.md                  # This file
+├── requirements.txt
+├── setup.py
+└── README.md
 ```
+
+---
 
 ## Installation
 
-1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd spy-volatility-clustering-and-garch
-```
 
-2. Install dependencies:
-```bash
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -U pip
 pip install -r requirements.txt
-```
-
-3. Install the package in development mode:
-```bash
 pip install -e .
 ```
 
-## Dependencies
+### Dependencies
 
-The project requires the following Python packages:
-- `pandas` - Data manipulation and analysis
-- `numpy` - Numerical computing
-- `matplotlib` - Plotting and visualization
-- `yfinance` - Yahoo Finance data download
-- `arch` - ARCH/GARCH model implementations
-- `statsmodels` - Statistical modeling
-- `pyyaml` - YAML configuration file parsing
+- `pandas`, `numpy` (core)
+- `matplotlib` (plots saved to disk)
+- `yfinance` (data)
+- `arch` (GARCH)
+- `statsmodels` (future VAR work)
+- `pyyaml` (configs)
+
+---
 
 ## Configuration
 
-The project uses YAML configuration files located in the `configs/` directory. The default configuration (`configs/default.yaml`) includes:
+Configs live in `configs/`.
 
-- **Data settings**: SPY ticker symbol, date ranges, and file paths
-- **Model parameters**: GARCH model specifications (to be extended)
+- `default.yaml`: SPY single asset pipeline
+- `default_multivar.yaml`: multivariate prices for covariance diagnostics
 
-Example configuration:
+Example single-asset config:
 ```yaml
 data:
   root_dir: "data"
@@ -96,137 +122,106 @@ data:
   end_date: null  # null = use today's date when running
 ```
 
-## Usage
-
-### Loading SPY Data
-
-The package provides utilities to download and update SPY price data from Yahoo Finance:
-
-```python
-from spy_volatility.utils.config import load_config
-from spy_volatility.data.loaders import load_or_update_spy_prices
-
-# Load configuration
-cfg = load_config()
-
-# Load or update SPY prices
-spy_data = load_or_update_spy_prices(cfg)
-print(spy_data.tail())
+Example multivariate config (used for covariance diagnostics):
+```yaml
+data:
+  prices_file: "data/prices/multivar_prices.csv"
+  ticker: ["SPY", "XLF", "XLK", "XLE", "XLY", "XLP", "XLI", "XLU", "XLV", "XLB"]
+  start_date: "2010-01-01"
+  end_date: null
 ```
 
-The `load_or_update_spy_prices` function:
-- Downloads full history if no data file exists
-- Incrementally updates existing data with new records
-- Automatically handles date ranges and deduplication
+---
 
-### Computing Returns and Realized Volatility
+## How to run (scripts only)
 
-Compute log returns and realized volatility from SPY prices:
-
-```python
-from spy_volatility.data.features import compute_returns, compute_realized_volatility
-from spy_volatility.utils.config import load_config
-from spy_volatility.data.loaders import load_or_update_spy_prices
-
-# Load data
-cfg = load_config()
-prices = load_or_update_spy_prices(cfg, allow_data_update=False)
-
-# Compute returns
-prices = compute_returns(prices, price_col="SPY_Adj_Close")
-
-# Compute realized volatility (21-day rolling window)
-rv21 = compute_realized_volatility(prices, window=21)
-```
-
-Or run the script:
-```bash
-python scripts/compute_returns_and_rv.py
-```
-
-This script generates:
-- `SPY_log_returns.png` - Time series plot of log returns
-- `SPY_realized_volatility.png` - Time series plot of realized volatility
-
-### Fitting GARCH Models
-
-Fit a GARCH(1,1) model to returns and compare with realized volatility:
-
-```python
-from spy_volatility.models.garch_models import fit_garch_11
-from spy_volatility.data.features import compute_returns, compute_realized_volatility
-
-# Compute returns
-returns = compute_returns(prices)["SPY_Log_Return"]
-
-# Fit GARCH(1,1) model
-garch_vol = fit_garch_11(returns.dropna())
-
-# Compute realized volatility for comparison
-rv21 = compute_realized_volatility(prices, window=21)
-```
-
-Or run the script:
-```bash
-python scripts/fit_garch.py
-```
-
-This script generates:
-- `SPY_GARCH11_VS_RV21.png` - Comparison plot of GARCH(1,1) conditional volatility vs. 21-day realized volatility
-
-### Utility Scripts
-
-**Print configuration:**
+### 0) Sanity check config resolution
 ```bash
 python scripts/print_config.py
 ```
 
-**Test data loading:**
+### 1) Day 1: Volatility clustering diagnostics (returns + RV)
+
+The goal here is to compute log returns and an annualized realized volatility proxy (default RV(21)), then save figures.
+
 ```bash
-python scripts/test_load_spy.py
+python scripts/compute_returns_and_rv.py
 ```
 
-## Features
+**Outputs:**
+- `data/outputs/figures/SPY_log_returns.png`
+- `data/outputs/figures/SPY_realized_volatility.png`
 
-- **Automated Data Download**: Download SPY historical prices from Yahoo Finance
-- **Incremental Updates**: Automatically update existing datasets with new data
-- **Returns Computation**: Calculate log returns and squared returns from price data
-- **Realized Volatility**: Compute rolling-window realized volatility (annualized)
-- **GARCH Models**: Fit GARCH(1,1) models with t-distributed errors using the `arch` library
-- **Volatility Comparison**: Compare GARCH conditional volatility with realized volatility
-- **Visualization**: Generate time series plots for returns, realized volatility, and model comparisons
-- **Configuration Management**: YAML-based configuration system
-- **Modular Design**: Clean separation of data, models, and utilities
+**Interpretation:** squared returns and RV often show volatility clustering.
 
-## Development
+### 2) Day 2: GARCH(1,1) baseline vs realized volatility
 
-The project follows a modular structure:
-- **Data Module** (`spy_volatility.data`): 
-  - `loaders.py`: Handles SPY data download and loading from Yahoo Finance
-  - `features.py`: Feature engineering functions for computing returns and realized volatility
-- **Models Module** (`spy_volatility.models`): 
-  - `garch_models.py`: GARCH model implementations (currently GARCH(1,1) with t-distributed errors)
-- **Training Module** (`spy_volatility.training`): Model training and evaluation utilities (to be extended)
-- **Utils Module** (`spy_volatility.utils`): 
-  - `config.py`: Configuration loading and project root utilities
+The goal is to fit a GARCH(1,1) model and compare conditional volatility to RV(21).
 
-### Key Functions
+```bash
+python scripts/fit_garch.py
+```
 
-**Data Features** (`spy_volatility.data.features`):
-- `compute_returns()`: Computes log returns and squared returns from price data
-- `compute_realized_volatility()`: Computes rolling-window realized volatility (annualized)
+**Output:**
+- `data/outputs/figures/SPY_GARCH11_VS_RV21.png`
 
-**GARCH Models** (`spy_volatility.models.garch_models`):
-- `fit_garch_11()`: Fits a GARCH(1,1) model to returns and returns conditional volatility series
+**Note:** this is a diagnostic comparison, not walk-forward evaluation yet.
+
+### 3) Day 3: Covariance fragility diagnostics (eigenvalues + condition number)
+
+The goal is to compute rolling sample covariance matrices and check numerical properties over time.
+
+```bash
+python scripts/diagnose_covariance.py
+```
+
+**Output:**
+- `data/outputs/figures/day3_covariance_fragility.png`
+
+**Interpretation:** sample covariance can become ill-conditioned; smallest eigenvalues may approach zero (or even go negative numerically), and condition number can spike in stressed periods.
+
+---
+
+## Key concepts
+
+### Forecast vs realized proxy
+
+The goal is to keep these concepts distinct:
+- **GARCH conditional volatility** is a model-based estimate (a forecast object).
+- **Realized volatility (RV)** is a proxy built from future returns over a window (a realized object).
+
+Keeping these distinct seems important in risk modeling.
+
+### Covariance can be fragile
+
+The goal here is to understand that even for liquid ETFs, rolling sample covariance can become ill-conditioned and unstable. This is why production systems typically require SPD enforcement and numerical repairs before using covariance in risk allocation or optimization.
+
+---
+
+## Development notes
+
+A few organizational choices I made:
+- Library code lives in `src/spy_volatility/`.
+- Scripts under `scripts/` are the official entrypoints.
+- Generated artifacts go under `data/` (safe to delete and regenerate).
+- `pip install -e .` is used for an editable install so scripts can import the package cleanly.
+
+---
+
+## Next steps (planned)
+
+Some things I'd like to add:
+- SPD repairs (jitter, eigenvalue clipping, Cholesky checks) + unit tests
+- Walk-forward evaluation (required before performance claims)
+- VAR innovation covariance baseline
+- Minimal risk application (vol targeting / risk parity) with turnover reporting
+
+---
 
 ## License
 
-[Add your license information here]
+TBD
 
 ## Author
 
-[Add author information here]
-
-
-
-
+Jim Lim

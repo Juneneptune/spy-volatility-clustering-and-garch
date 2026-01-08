@@ -3,15 +3,17 @@ import numpy as np
 
 def compute_returns(
     prices: pd.DataFrame,
-    price_col: str = "SPY_Adj_Close",
+    price_col: list = ["SPY_Adj_Close"],
 ) -> pd.DataFrame:
     # Find stock name
-    ticker = price_col.split("_")[0]
+    for c in price_col:
+        ticker = c.split("_")[0]
 
-    # Compute log return and squared return
-    log_adj_close = np.log(prices[price_col])
-    prices[ticker + "_Log_Return"] = log_adj_close.diff()
-    prices[ticker + "_Squared_Return"] = log_adj_close.diff() ** 2
+        # Compute log return and squared return
+        log_adj_close = np.log(prices[c])
+        prices[ticker + "_Log_Return"] = log_adj_close.diff()
+        prices[ticker + "_Squared_Return"] = log_adj_close.diff() ** 2
+    prices = prices.sort_index(axis=1)
     return prices
 
 def compute_realized_volatility(

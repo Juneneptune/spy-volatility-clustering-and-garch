@@ -1,0 +1,16 @@
+data:
+  root_dir: "data"             # relative to repo root
+  prices_file: "data/multivariate/multi_prices.csv"
+  ticker: 
+    - SPY
+    - XLF
+    - XLK
+    - XLE
+    - XLY
+    - XLP
+    - XLI
+    - XLU
+    - XLV
+    - XLB
+  start_date: "2010-01-01"
+  end_date: null               # null = use today's date when running
