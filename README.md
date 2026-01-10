@@ -1,6 +1,6 @@
 # Volatility and Covariance Baseline Lab (SPY + Liquid ETFs)
 
-The goal of this project is to build baseline volatility and covariance plumbing in a clean, reproducible way using Python scripts (no notebooks).
+The goal of this project is to build baseline volatility and covariance plumbing in a clean, reproducible way using Python scripts.
 
 This project's goal is not about modeling complexity or "alpha claims." Instead, I'm trying to work through:
 - basic definitions (returns, realized volatility, sample covariance),
@@ -19,8 +19,10 @@ The project currently includes:
 - Baseline volatility models compared to realized proxies
 - Covariance treated as a potentially fragile risk object
 - Conditioning diagnostics via eigenvalues and condition number
+- SPD regularization techniques (diagonal jitter, eigenvalue clipping) with Cholesky validation
 - Scripts with configs (not notebooks)
 - Reproducible artifacts (figures saved to disk, deterministic paths)
+- Unit tests for SPD repair functions
 
 ---
 
@@ -40,7 +42,8 @@ spy-volatility-clustering-and-garch/
 │           ├── SPY_log_returns.png
 │           ├── SPY_realized_volatility.png
 │           ├── SPY_GARCH11_VS_RV21.png
-│           └── day3_covariance_fragility.png
+│           ├── prices_covariance_fragility.png
+│           └── regularized_covariance_condition_number.png
 │
 ├── datasets/                   # Additional datasets (if any)
 │
@@ -52,7 +55,11 @@ spy-volatility-clustering-and-garch/
 │   ├── print_config.py
 │   ├── compute_returns_and_rv.py
 │   ├── fit_garch.py
-│   └── diagnose_covariance.py
+│   ├── diagnose_covariance.py
+│   └── regulate_covariance.py
+│
+├── tests/                      # Unit tests
+│   └── test_spd.py
 │
 ├── src/                        # Source code
 │   └── spy_volatility/        # Main package
@@ -66,7 +73,8 @@ spy-volatility-clustering-and-garch/
 │       │   └── garch_models.py  # GARCH baselines (currently GARCH(1,1))
 │       ├── risk/              # Risk metrics and portfolio analysis
 │       │   ├── __init__.py
-│       │   └── cov_metrics.py   # rolling sample covariance + diagnostics
+│       │   ├── cov_metrics.py   # rolling sample covariance + diagnostics
+│       │   └── spd.py           # SPD regularization (jitter, eigenvalue clipping, Cholesky checks)
 │       ├── training/          # Model training utilities
 │       │   └── __init__.py
 │       └── utils/             # Utility functions
@@ -140,7 +148,7 @@ data:
 python scripts/print_config.py
 ```
 
-### 1) Day 1: Volatility clustering diagnostics (returns + RV)
+### 1) Volatility clustering diagnostics (returns + RV)
 
 The goal here is to compute log returns and an annualized realized volatility proxy (default RV(21)), then save figures.
 
@@ -152,9 +160,13 @@ python scripts/compute_returns_and_rv.py
 - `data/outputs/figures/SPY_log_returns.png`
 - `data/outputs/figures/SPY_realized_volatility.png`
 
-**Interpretation:** squared returns and RV often show volatility clustering.
+**Results:** The figures illustrate volatility clustering and regime persistence, showing that squared returns and realized volatility exhibit the characteristic pattern where periods of high volatility cluster together.
 
-### 2) Day 2: GARCH(1,1) baseline vs realized volatility
+![SPY Log Returns](data/outputs/figures/SPY_log_returns.png)
+
+![SPY Realized Volatility](data/outputs/figures/SPY_realized_volatility.png)
+
+### 2) GARCH(1,1) baseline vs realized volatility
 
 The goal is to fit a GARCH(1,1) model and compare conditional volatility to RV(21).
 
@@ -165,9 +177,13 @@ python scripts/fit_garch.py
 **Output:**
 - `data/outputs/figures/SPY_GARCH11_VS_RV21.png`
 
+**Results:** This comparison emphasizes the distinction between model-based forecasts (GARCH conditional volatility) and realized proxies (RV). The figure shows how the GARCH model captures volatility dynamics compared to the ex-post realized measure.
+
+![GARCH vs Realized Volatility](data/outputs/figures/SPY_GARCH11_VS_RV21.png)
+
 **Note:** this is a diagnostic comparison, not walk-forward evaluation yet.
 
-### 3) Day 3: Covariance fragility diagnostics (eigenvalues + condition number)
+### 3) Covariance fragility diagnostics
 
 The goal is to compute rolling sample covariance matrices and check numerical properties over time.
 
@@ -176,11 +192,42 @@ python scripts/diagnose_covariance.py
 ```
 
 **Output:**
-- `data/outputs/figures/day3_covariance_fragility.png`
+- `data/outputs/figures/prices_covariance_fragility.png`
 
-**Interpretation:** sample covariance can become ill-conditioned; smallest eigenvalues may approach zero (or even go negative numerically), and condition number can spike in stressed periods.
+**Results:** The analysis shows that rolling sample covariance matrices for even liquid ETFs are often numerically fragile. Small eigenvalues approach zero (or even go negative numerically), and condition numbers spike dramatically in stressed periods, making these matrices unsafe for direct use in optimization or risk allocation.
+
+![Covariance Fragility Diagnostics](data/outputs/figures/prices_covariance_fragility.png)
+
+### 4) SPD regularization
+
+The goal is to apply explicit SPD (symmetric positive definite) regularization techniques to make covariance matrices numerically usable.
+
+```bash
+python scripts/regulate_covariance.py
+```
+
+**Output:**
+- `data/outputs/figures/regularized_covariance_condition_number.png`
+
+**Results:** This demonstrates that simple numerical fixes (diagonal jitter and eigenvalue clipping) dramatically improve covariance conditioning without changing the underlying estimator. The figure compares condition numbers for raw, jittered, and clipped covariance matrices over time, showing that explicit SPD repairs make covariance matrices safe for Cholesky decomposition and subsequent use in risk systems.
+
+![Regularized Covariance Condition Number](data/outputs/figures/regularized_covariance_condition_number.png)
+
+**Key insight:** In practical risk systems, the primary challenge is not estimating covariance, but making it numerically usable. Diagonal jitter stabilizes near-singular matrices by shifting the spectrum upward, while eigenvalue clipping enforces a hard lower bound and guarantees SPD by construction.
 
 ---
+
+## Results and findings
+
+The project follows a progression that builds understanding of volatility and covariance as practical risk objects:
+
+1. **Volatility clustering visualization**: We begin by visualizing SPY log returns and realized volatility to illustrate volatility clustering and regime persistence. The figures show clear periods where high volatility clusters together, which is fundamental to understanding volatility dynamics.
+
+2. **Forecast vs realized comparison**: We fit a GARCH(1,1) baseline and compare its conditional volatility to realized volatility, emphasizing the distinction between model-based forecasts and realized proxies. The comparison shows how GARCH captures volatility dynamics relative to ex-post measures.
+
+3. **Covariance fragility demonstration**: Moving to the multivariate setting, we show that rolling sample covariance matrices for even liquid ETFs are often numerically fragile, with small eigenvalues and extreme condition numbers that make them unsafe for direct use. The diagnostics reveal that sample covariance can become ill-conditioned during stressed periods.
+
+4. **SPD regularization results**: Finally, we demonstrate that simple, explicit SPD regularization techniques (diagonal jitter and eigenvalue clipping) substantially improve covariance conditioning. The results show that these minimal numerical repairs dramatically improve stability without changing the underlying estimator, highlighting that in practical risk systems the primary challenge is not estimating covariance, but making it numerically usable.
 
 ## Key concepts
 
@@ -192,9 +239,13 @@ The goal is to keep these concepts distinct:
 
 Keeping these distinct seems important in risk modeling.
 
-### Covariance can be fragile
+### Covariance fragility and SPD regularization
 
-The goal here is to understand that even for liquid ETFs, rolling sample covariance can become ill-conditioned and unstable. This is why production systems typically require SPD enforcement and numerical repairs before using covariance in risk allocation or optimization.
+The goal here is to understand that even for liquid ETFs, rolling sample covariance can become ill-conditioned and unstable. This project implements two production-style SPD repair techniques:
+- **Diagonal jitter**: Stabilizes near-singular matrices by shifting the spectrum upward through a small diagonal addition.
+- **Eigenvalue clipping**: Enforces a hard lower bound on eigenvalues and guarantees SPD by construction through eigendecomposition and reconstruction.
+
+Both techniques are validated via Cholesky decomposition tests to ensure matrices are numerically usable. This is why production systems typically require SPD enforcement and numerical repairs before using covariance in risk allocation or optimization.
 
 ---
 
@@ -205,16 +256,15 @@ A few organizational choices I made:
 - Scripts under `scripts/` are the official entrypoints.
 - Generated artifacts go under `data/` (safe to delete and regenerate).
 - `pip install -e .` is used for an editable install so scripts can import the package cleanly.
-
----
+- Unit tests in `tests/` validate SPD repair functions with various edge cases (singular matrices, indefinite matrices, near-singular numerics).
 
 ## Next steps (planned)
 
 Some things I'd like to add:
-- SPD repairs (jitter, eigenvalue clipping, Cholesky checks) + unit tests
 - Walk-forward evaluation (required before performance claims)
 - VAR innovation covariance baseline
 - Minimal risk application (vol targeting / risk parity) with turnover reporting
+- Extended testing of regularization techniques on various market conditions
 
 ---
 

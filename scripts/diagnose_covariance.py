@@ -53,7 +53,7 @@ def main() -> None:
     rolling_diagnostic["condition_number"].plot(ax=axes[2], title="Condition Number")
 
     plt.tight_layout()
-    plt.savefig(f"{root}/data/outputs/figures/day3_covariance_fragility.png")
+    plt.savefig(f"{root}/data/outputs/figures/prices_covariance_fragility.png")
     plt.close()
 
 
