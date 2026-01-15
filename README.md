@@ -43,7 +43,8 @@ spy-volatility-clustering-and-garch/
 │           ├── SPY_realized_volatility.png
 │           ├── SPY_GARCH11_VS_RV21.png
 │           ├── prices_covariance_fragility.png
-│           └── regularized_covariance_condition_number.png
+│           ├── regularized_covariance_condition_number.png
+│           └── rolling_vs_var_cov_diagnostics.png
 │
 ├── datasets/                   # Additional datasets (if any)
 │
@@ -55,6 +56,7 @@ spy-volatility-clustering-and-garch/
 │   ├── print_config.py
 │   ├── compute_returns_and_rv.py
 │   ├── fit_garch.py
+│   ├── fit_var.py
 │   ├── diagnose_covariance.py
 │   └── regulate_covariance.py
 │
@@ -70,7 +72,8 @@ spy-volatility-clustering-and-garch/
 │       │   └── features.py   # returns + realized volatility
 │       ├── models/            # GARCH and volatility models
 │       │   ├── __init__.py
-│       │   └── garch_models.py  # GARCH baselines (currently GARCH(1,1))
+│       │   ├── garch_models.py  # GARCH baselines (currently GARCH(1,1))
+│       │   └── var.py           # VAR models (currently VAR(1))
 │       ├── risk/              # Risk metrics and portfolio analysis
 │       │   ├── __init__.py
 │       │   ├── cov_metrics.py   # rolling sample covariance + diagnostics
@@ -215,6 +218,21 @@ python scripts/regulate_covariance.py
 
 **Key insight:** In practical risk systems, the primary challenge is not estimating covariance, but making it numerically usable. Diagonal jitter stabilizes near-singular matrices by shifting the spectrum upward, while eigenvalue clipping enforces a hard lower bound and guarantees SPD by construction.
 
+### 5) VAR(1) innovation covariance vs rolling sample covariance
+
+The goal is to fit a VAR(1) model and compare the innovation covariance to rolling sample covariance.
+
+```bash
+python scripts/fit_var.py
+```
+
+**Output:**
+- `data/outputs/figures/rolling_vs_var_cov_diagnostics.png`
+
+**Results:** Compared to rolling sample covariance, the VAR(1) innovation covariance exhibits a smaller condition number with a reduced largest eigenvalue and an elevated smallest eigenvalue, indicating improved conditioning after removing linear temporal dependence in the conditional mean.
+
+![Rolling vs VAR Covariance Diagnostics](data/outputs/figures/rolling_vs_var_cov_diagnostics.png)
+
 ---
 
 ## Results and findings
@@ -227,7 +245,9 @@ The project follows a progression that builds understanding of volatility and co
 
 3. **Covariance fragility demonstration**: Moving to the multivariate setting, we show that rolling sample covariance matrices for even liquid ETFs are often numerically fragile, with small eigenvalues and extreme condition numbers that make them unsafe for direct use. The diagnostics reveal that sample covariance can become ill-conditioned during stressed periods.
 
-4. **SPD regularization results**: Finally, we demonstrate that simple, explicit SPD regularization techniques (diagonal jitter and eigenvalue clipping) substantially improve covariance conditioning. The results show that these minimal numerical repairs dramatically improve stability without changing the underlying estimator, highlighting that in practical risk systems the primary challenge is not estimating covariance, but making it numerically usable.
+4. **SPD regularization results**: We demonstrate that simple, explicit SPD regularization techniques (diagonal jitter and eigenvalue clipping) substantially improve covariance conditioning. The results show that these minimal numerical repairs dramatically improve stability without changing the underlying estimator, highlighting that in practical risk systems the primary challenge is not estimating covariance, but making it numerically usable.
+
+5. **VAR innovation covariance comparison**: We fit a VAR(1) model and compare the innovation covariance to rolling sample covariance. Compared to rolling sample covariance, the VAR(1) innovation covariance exhibits a smaller condition number with a reduced largest eigenvalue and an elevated smallest eigenvalue, indicating improved conditioning after removing linear temporal dependence in the conditional mean.
 
 ## Key concepts
 
@@ -262,7 +282,6 @@ A few organizational choices I made:
 
 Some things I'd like to add:
 - Walk-forward evaluation (required before performance claims)
-- VAR innovation covariance baseline
 - Minimal risk application (vol targeting / risk parity) with turnover reporting
 - Extended testing of regularization techniques on various market conditions
 

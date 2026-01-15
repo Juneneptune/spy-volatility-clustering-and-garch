@@ -36,6 +36,7 @@ def covariance_diagnostics(
         - condition number
     """
     x = cov.to_numpy()
+
     eig = np.linalg.eigvals(x)
     return {
         "min_eigenvalue": eig.min(),
