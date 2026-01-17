@@ -346,7 +346,7 @@ Some things I'd like to add:
 
 ## License
 
-TBD
+MIT License
 
 ## Author
 
