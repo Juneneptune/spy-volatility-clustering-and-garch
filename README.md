@@ -205,7 +205,7 @@ python scripts/diagnose_covariance.py
 **Output:**
 - `data/outputs/figures/prices_covariance_fragility.png`
 
-**Results:** The analysis shows that rolling sample covariance matrices for even liquid ETFs are often numerically fragile. Small eigenvalues approach zero (or even go negative numerically), and condition numbers spike dramatically in stressed periods, making these matrices unsafe for direct use in optimization or risk allocation.
+**Results:** The analysis shows that rolling sample covariance matrices for even liquid ETFs are often numerically fragile. Small eigenvalues approach zero, and condition numbers spike dramatically in stressed periods, making these matrices unsafe for direct use in optimization or risk allocation.
 
 ![Covariance Fragility Diagnostics](data/outputs/figures/prices_covariance_fragility.png)
 
@@ -224,7 +224,7 @@ python scripts/regulate_covariance.py
 
 ![Regularized Covariance Condition Number](data/outputs/figures/regularized_covariance_condition_number.png)
 
-**Key insight:** in practice, numerical usability can be as important as estimation, especially in stressed regimes. Diagonal jitter stabilizes near-singular matrices by shifting the spectrum upward, while eigenvalue clipping enforces a hard lower bound and guarantees SPD by construction.
+**Key insight:** in practice, it seems numerical usability can be as important as estimation, especially in stressed regimes. Diagonal jitter stabilizes near-singular matrices by shifting the spectrum upward, while eigenvalue clipping enforces a hard lower bound and guarantees SPD by construction.
 
 ### 5) VAR(1) innovation covariance vs rolling sample covariance
 
